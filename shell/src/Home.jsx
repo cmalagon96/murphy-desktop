@@ -13,9 +13,9 @@ const TILES = [
 		span: "sm:col-span-2", // featured: chat is the heart of the app
 	},
 	{
-		id: "chat",
-		title: "Start a Call",
-		blurb: "Voice & video, Discord-style — pick a room and hop in",
+		id: "lounge",
+		title: "Voice Lounge",
+		blurb: "Hop in — the always-open voice channel",
 		icon: Phone,
 		accent: "text-murphy-cyan",
 		glow: "hover:shadow-[0_10px_40px_rgba(73,213,200,0.22)]",

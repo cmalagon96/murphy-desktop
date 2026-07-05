@@ -41,11 +41,18 @@ function setupSession(ses) {
 	// getDisplayMedia does not work in Electron without this. useSystemPicker
 	// delegates to the desktop portal (KDE/PipeWire on Wayland); the callback
 	// body is only the fallback path for platforms without a system picker.
+	// Screen-share audio: Chromium only supports system-audio loopback on
+	// Windows — omitting it there made every share silent. Linux/macOS have
+	// no loopback (same platform gap Discord has).
 	ses.setDisplayMediaRequestHandler(
-		(_request, callback) => {
+		(request, callback) => {
 			desktopCapturer
 				.getSources({ types: ["screen"] })
-				.then((sources) => callback({ video: sources[0] }))
+				.then((sources) => {
+					const streams = { video: sources[0] };
+					if (request.audioRequested && process.platform === "win32") streams.audio = "loopback";
+					callback(streams);
+				})
 				.catch(() => callback({}));
 		},
 		{ useSystemPicker: true }

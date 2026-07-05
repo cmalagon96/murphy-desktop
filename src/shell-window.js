@@ -18,6 +18,11 @@ const SECTION_URLS = {
 // (the Discord-style call UI is patched into its bundled Element Call).
 const SECTION_ALIAS = { calls: "chat" };
 
+// "lounge" is a rail section of its own but renders in the chat pane,
+// deep-linked to the always-open Element Call video room.
+const LOUNGE_ALIAS = "#lounge:matrix.murphy-cloud.com";
+const paneKey = (section) => (section === "lounge" ? "chat" : section);
+
 function createShellWindow() {
 	const state = windowStateKeeper({ defaultWidth: 1280, defaultHeight: 820 });
 
@@ -95,7 +100,7 @@ function createShellWindow() {
 		});
 		applyNavPolicy(pane.webContents);
 		wireReloadKeys(pane.webContents);
-		healRenderer(pane.webContents, () => pane.webContents.loadURL(SECTION_URLS[section]));
+		healRenderer(pane.webContents, () => pane.webContents.loadURL(SECTION_URLS[paneKey(section)]));
 
 		let ssoRetryAt = 0;
 		const maybeRecoverSSO = (url) => {
@@ -149,15 +154,28 @@ function createShellWindow() {
 
 	function showSection(section) {
 		section = SECTION_ALIAS[section] || section;
-		if (section !== "home" && !SECTION_URLS[section]) return;
-		const prev = panes.get(active);
-		if (prev) prev.setVisible(false);
+		if (section !== "home" && !SECTION_URLS[paneKey(section)]) return;
+		const prev = panes.get(paneKey(active));
+		const next = section === "home" ? null : getPane(paneKey(section));
+		if (prev && prev !== next) prev.setVisible(false);
 		active = section;
-		if (section !== "home") {
-			getPane(section).setVisible(true);
+		if (next) {
+			next.setVisible(true);
+			if (section === "lounge") showLoungeRoom(next);
 			layout();
 		}
 		shellView.webContents.send("murphy:section", section);
+	}
+
+	// SPA hash-hop when Element is already loaded (instant); full load otherwise.
+	function showLoungeRoom(pane) {
+		const wc = pane.webContents;
+		const target = "#/room/" + encodeURIComponent(LOUNGE_ALIAS);
+		if (/^https:\/\/element\.murphy-cloud\.com\//.test(wc.getURL())) {
+			wc.executeJavaScript(`location.hash = ${JSON.stringify(target)}`).catch(() => {});
+		} else {
+			wc.loadURL("https://element.murphy-cloud.com/" + target);
+		}
 	}
 
 	ipcMain.on("murphy:navigate", (_e, section) => showSection(section));

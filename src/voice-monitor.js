@@ -145,7 +145,8 @@ function startVoiceMonitor(ses, shell) {
 			const inCall =
 				process.env.MURPHY_FAKE_INCALL === "1" ||
 				(!!room && !!selfPrefix && room.participants.some((p) => (p.id || "").toLowerCase().startsWith(selfPrefix)));
-			const viewingChat = shell.win.isFocused() && shell.getActiveSection() === "chat";
+			const viewingChat =
+				shell.win.isFocused() && ["chat", "lounge"].includes(shell.getActiveSection());
 
 			if (room && inCall && overlayEnabled) showOverlay(room);
 			else hideOverlay();

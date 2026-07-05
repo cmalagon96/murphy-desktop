@@ -1,11 +1,12 @@
 import React from "react";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { House, FolderClosed, MessageCircle, Image, Sparkles } from "lucide-react";
+import { House, FolderClosed, MessageCircle, Headphones, Image, Sparkles } from "lucide-react";
 
 export const SECTIONS = [
 	{ id: "home", label: "Home", icon: House },
 	{ id: "files", label: "Files", icon: FolderClosed },
-	{ id: "chat", label: "Chat & Calls", icon: MessageCircle },
+	{ id: "chat", label: "Chat", icon: MessageCircle },
+	{ id: "lounge", label: "Voice Lounge", icon: Headphones },
 	{ id: "photos", label: "Photos", icon: Image },
 	{ id: "rosie", label: "Rosie", icon: Sparkles },
 ];

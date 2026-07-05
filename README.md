@@ -39,6 +39,14 @@ npm run dist:win     # → dist/*.exe (NSIS)      (builds on Linux via wine)
 npm run dist:mac     # → REQUIRES macOS — use the release workflow instead
 ```
 
+### Screen-share audio (platform truth)
+
+Sharing your screen sends **system audio on Windows only** (Chromium's audio
+loopback exists solely there — Discord has the same gap without kernel-level
+drivers). Linux/macOS sharers send video without system audio. *Receiving*
+share audio works everywhere; each person's tile has its own local
+volume/"Mute for me" controls in the call menu.
+
 ### Unsigned-build caveats (no code-signing certs purchased)
 
 - **macOS Gatekeeper**: first launch needs right-click → Open (or `xattr -cr "Murphy Desktop.app"`).
