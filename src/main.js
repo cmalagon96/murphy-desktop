@@ -40,8 +40,8 @@ if (!app.requestSingleInstanceLock()) {
 		setInterval(() => ses.cookies.flushStore().catch(() => {}), 5 * 60 * 1000);
 		app.on("before-quit", () => ses.cookies.flushStore().catch(() => {}));
 		shell = createShellWindow();
-		createTray(() => shell.win);
-		startVoiceMonitor(ses, shell);
+		const voiceMonitor = startVoiceMonitor(ses, shell);
+		createTray(() => shell.win, voiceMonitor);
 
 		app.on("activate", () => {
 			if (shell) showWindow(shell.win);

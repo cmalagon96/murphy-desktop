@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			* { margin: 0; box-sizing: border-box; user-select: none; }
+			html, body { background: transparent; overflow: hidden; }
+			#strip {
+				display: flex; align-items: center; gap: 6px;
+				width: max-content; margin: 4px;
+				padding: 7px 12px;
+				background: rgba(16, 16, 20, 0.78);
+				border: 1px solid rgba(255, 255, 255, 0.14);
+				border-radius: 999px;
+				-webkit-app-region: drag; /* grab anywhere to reposition over the game */
+			}
+			.bubble {
+				width: 38px; height: 38px; border-radius: 50%;
+				display: flex; align-items: center; justify-content: center;
+				font: 700 15px system-ui, sans-serif; color: #fff;
+				opacity: 0.92;
+			}
+			.speaking {
+				box-shadow: 0 0 0 2.5px #23a55a;
+				animation: pulse 1.2s ease-out infinite;
+				opacity: 1;
+			}
+			@keyframes pulse {
+				0% { box-shadow: 0 0 0 2.5px #23a55a; }
+				50% { box-shadow: 0 0 0 5px rgba(35, 165, 90, 0.4); }
+				100% { box-shadow: 0 0 0 2.5px #23a55a; }
+			}
+		</style>
+	</head>
+	<body>
+		<div id="strip"></div>
+		<script>
+			const strip = document.getElementById("strip");
+			function colorFor(label) {
+				let h = 0;
+				for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
+				return `hsl(${((h % 360) + 360) % 360} 55% 42%)`;
+			}
+			window.murphyOverlay.onState((s) => {
+				strip.innerHTML = "";
+				for (const p of s.participants.slice(0, 8)) {
+					const b = document.createElement("div");
+					b.className = "bubble" + (p.speaking ? " speaking" : "");
+					b.style.background = colorFor(p.label || "?");
+					b.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
+					b.title = p.label;
+					strip.appendChild(b);
+				}
+			});
+		</script>
+	</body>
+</html>

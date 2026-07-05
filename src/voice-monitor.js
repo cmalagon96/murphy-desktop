@@ -53,6 +53,52 @@ function startVoiceMonitor(ses, shell) {
 	}
 
 	let currentRoom = null;
+	let overlay = null;
+	let overlayEnabled = true; // tray toggle
+
+	// In-call overlay: compact avatar strip floating over games (borderless/
+	// windowed). Draggable; KWin remembers where the user parks it.
+	function getOverlay() {
+		if (overlay && !overlay.isDestroyed()) return overlay;
+		const { workArea } = screen.getPrimaryDisplay();
+		overlay = new BrowserWindow({
+			width: 220,
+			height: 64,
+			x: workArea.x + Math.round(workArea.width / 2) - 110,
+			y: workArea.y + 12,
+			frame: false,
+			transparent: true,
+			resizable: false,
+			alwaysOnTop: true,
+			skipTaskbar: true,
+			show: false,
+			webPreferences: {
+				preload: path.join(__dirname, "call-overlay-preload.js"),
+				contextIsolation: true,
+				nodeIntegration: false,
+				sandbox: true,
+			},
+		});
+		overlay.setAlwaysOnTop(true, "screen-saver");
+		overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+		overlay.loadFile(path.join(__dirname, "call-overlay.html"));
+		return overlay;
+	}
+
+	function showOverlay(room) {
+		const o = getOverlay();
+		const n = Math.min(room.participants.length, 8);
+		o.setContentSize(24 + n * 44 + 16, 64);
+		const send = () => {
+			o.webContents.send("calloverlay:state", { participants: room.participants });
+			if (!o.isVisible()) o.showInactive();
+		};
+		o.webContents.isLoading() ? o.webContents.once("did-finish-load", send) : send();
+	}
+
+	function hideOverlay() {
+		if (overlay && !overlay.isDestroyed() && overlay.isVisible()) overlay.hide();
+	}
 
 	ipcMain.on("callpopup:join", () => {
 		if (currentRoom) shell.joinVoiceRoom(currentRoom.id);
@@ -97,8 +143,12 @@ function startVoiceMonitor(ses, shell) {
 			const room = rooms[0] || null;
 			const selfPrefix = uid ? `@${uid}:` : null;
 			const inCall =
-				!!room && !!selfPrefix && room.participants.some((p) => (p.id || "").toLowerCase().startsWith(selfPrefix));
+				process.env.MURPHY_FAKE_INCALL === "1" ||
+				(!!room && !!selfPrefix && room.participants.some((p) => (p.id || "").toLowerCase().startsWith(selfPrefix)));
 			const viewingChat = shell.win.isFocused() && shell.getActiveSection() === "chat";
+
+			if (room && inCall && overlayEnabled) showOverlay(room);
+			else hideOverlay();
 
 			if (room && !inCall && !viewingChat && !dismissed.has(room.id)) {
 				currentRoom = room;
@@ -127,6 +177,13 @@ function startVoiceMonitor(ses, shell) {
 	}
 
 	poll();
+
+	return {
+		setOverlayEnabled(v) {
+			overlayEnabled = v;
+			if (!v) hideOverlay();
+		},
+	};
 }
 
 module.exports = { startVoiceMonitor };
