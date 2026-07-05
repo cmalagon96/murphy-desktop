@@ -3,23 +3,36 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # Create the release once, up front — matrix jobs racing to create it
+  # simultaneously is exactly the 422 already_exists failure mode.
+  create-release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --title "Murphy Desktop ${GITHUB_REF_NAME#v}" --notes "Installers for Windows, macOS, and Linux. Unsigned builds — Windows: SmartScreen → More info → Run anyway; macOS: right-click → Open on first launch."
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             args: --mac
+            assets: "dist/*.dmg dist/*.zip"
           - os: windows-latest
             args: --win
+            assets: "dist/*.exe"
           - os: ubuntu-latest
             args: --linux
+            assets: "dist/*.AppImage"
     runs-on: ${{ matrix.os }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,4 +43,6 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx electron-builder ${{ matrix.args }} --publish always
+      - run: npx electron-builder ${{ matrix.args }} --publish never
+      - run: gh release upload "$GITHUB_REF_NAME" ${{ matrix.assets }} --clobber
+        shell: bash
