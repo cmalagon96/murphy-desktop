@@ -19,15 +19,25 @@ npm start          # run the app
 npm run smoke      # headless-ish sanity check: loads the site, screenshots, prints UA/errors
 ```
 
+## Download (family, start here)
+
+Grab the latest installer from **[Releases](https://github.com/cmalagon96/murphy-desktop/releases/latest)**:
+
+- **Windows**: `Murphy Desktop Setup x.y.z.exe`
+- **Mac**: `Murphy Desktop-x.y.z.dmg` (Apple Silicon + Intel)
+- **Linux**: `Murphy Desktop-x.y.z.AppImage` (`chmod +x`, then run)
+
 ## Build installers
+
+Releases build automatically: push a tag like `v0.2.0` and `.github/workflows/release.yml` builds all three platforms on native runners and attaches them to a GitHub Release.
+
+Local builds (Linux host):
 
 ```sh
 npm run dist:linux   # → dist/*.AppImage        (builds on Linux)
 npm run dist:win     # → dist/*.exe (NSIS)      (builds on Linux via wine)
-npm run dist:mac     # → dist/*.dmg / *.zip     (REQUIRES macOS — use the GitHub Actions workflow)
+npm run dist:mac     # → REQUIRES macOS — use the release workflow instead
 ```
-
-macOS builds can't be produced from Linux — push a tag (or run the workflow manually) and `.github/workflows/build-mac.yml` produces the dmg/zip on a `macos-latest` runner, unsigned.
 
 ### Unsigned-build caveats (no code-signing certs purchased)
 

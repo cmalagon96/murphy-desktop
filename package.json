@@ -7,6 +7,7 @@
   "desktopName": "murphy-desktop",
   "author": "Cal Malagon",
   "license": "MIT",
+  "repository": "github:cmalagon96/murphy-desktop",
   "scripts": {
     "start": "electron .",
     "smoke": "electron scripts/smoke.js",
@@ -19,6 +20,10 @@
   },
   "build": {
     "appId": "com.murphycloud.desktop",
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    },
     "productName": "Murphy Desktop",
     "directories": {
       "output": "dist",
