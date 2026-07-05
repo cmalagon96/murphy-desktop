@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Desktop app for murphy-cloud.com — the Murphy family cloud",
   "main": "src/main.js",
+  "desktopName": "murphy-desktop",
   "author": "Cal Malagon",
   "license": "MIT",
   "scripts": {
@@ -33,7 +34,8 @@
         "AppImage"
       ],
       "category": "Network",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "syncDesktopName": true
     },
     "win": {
       "target": [
