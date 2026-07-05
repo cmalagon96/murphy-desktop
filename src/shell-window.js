@@ -45,6 +45,17 @@ function createShellWindow() {
 	win.contentView.addChildView(shellView);
 	shellView.webContents.loadFile(path.join(__dirname, "..", "shell", "dist", "index.html"));
 	wireReloadKeys(shellView.webContents);
+	healRenderer(shellView.webContents, () =>
+		shellView.webContents.loadFile(path.join(__dirname, "..", "shell", "dist", "index.html"))
+	);
+
+	// A crashed renderer (seen with dual screen-share on Wayland) becomes a
+	// 2-second blip instead of a dead pane.
+	function healRenderer(wc, reload) {
+		wc.on("render-process-gone", (_e, details) => {
+			if (details.reason !== "clean-exit" && details.reason !== "killed") setTimeout(reload, 1500);
+		});
+	}
 
 	const panes = new Map();
 	let active = "home";
@@ -84,6 +95,7 @@ function createShellWindow() {
 		});
 		applyNavPolicy(pane.webContents);
 		wireReloadKeys(pane.webContents);
+		healRenderer(pane.webContents, () => pane.webContents.loadURL(SECTION_URLS[section]));
 
 		let ssoRetryAt = 0;
 		const maybeRecoverSSO = (url) => {
@@ -160,7 +172,19 @@ function createShellWindow() {
 		}
 	});
 
-	return { win, shellView, panes, showSection };
+	// Voice-monitor popup "Join": land in the Element pane, deep-linked to the
+	// room when the LiveKit room name is a plain Matrix room id.
+	function joinVoiceRoom(roomId) {
+		showSection("chat");
+		if (roomId && roomId.startsWith("!")) {
+			getPane("chat").webContents.loadURL(
+				"https://element.murphy-cloud.com/#/room/" + encodeURIComponent(roomId)
+			);
+		}
+		showWindow(win);
+	}
+
+	return { win, shellView, panes, showSection, getActiveSection: () => active, joinVoiceRoom };
 }
 
 function showWindow(win) {

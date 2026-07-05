@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<style>
+			* { margin: 0; box-sizing: border-box; user-select: none; }
+			html, body { background: transparent; overflow: hidden; }
+			#card {
+				display: flex; align-items: center; gap: 12px;
+				margin: 8px; padding: 12px 14px;
+				background: #1a001a; color: #f4eef4;
+				border: 1px solid rgba(255, 255, 255, 0.14);
+				border-radius: 16px;
+				box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(194, 24, 91, 0.25);
+				font: 13px/1.35 system-ui, sans-serif;
+			}
+			#avatars { display: flex; }
+			.bubble {
+				width: 34px; height: 34px; border-radius: 50%;
+				display: flex; align-items: center; justify-content: center;
+				font-weight: 700; color: #fff; background: #c2185b;
+				border: 2px solid #1a001a; margin-left: -8px;
+			}
+			.bubble:first-child { margin-left: 0; }
+			.speaking { box-shadow: 0 0 0 2px #23a55a; animation: pulse 1.2s ease-out infinite; }
+			@keyframes pulse {
+				0% { box-shadow: 0 0 0 2px #23a55a; }
+				50% { box-shadow: 0 0 0 4px rgba(35, 165, 90, 0.45); }
+				100% { box-shadow: 0 0 0 2px #23a55a; }
+			}
+			#text { flex: 1; min-width: 0; }
+			#who { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+			#hint { color: #a99aab; font-size: 12px; }
+			#join {
+				border: 0; border-radius: 10px; padding: 9px 16px;
+				background: #23a55a; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
+			}
+			#join:hover { background: #2cbf69; }
+			#close {
+				border: 0; background: none; color: #a99aab; font-size: 15px;
+				cursor: pointer; padding: 4px 6px;
+			}
+			#close:hover { color: #fff; }
+		</style>
+	</head>
+	<body>
+		<div id="card">
+			<div id="avatars"></div>
+			<div id="text">
+				<div id="who"></div>
+				<div id="hint">is in a voice call</div>
+			</div>
+			<button id="join">Join</button>
+			<button id="close" aria-label="Dismiss">✕</button>
+		</div>
+		<script>
+			const avatars = document.getElementById("avatars");
+			const who = document.getElementById("who");
+			const hint = document.getElementById("hint");
+			window.murphyPopup.onState((s) => {
+				avatars.innerHTML = "";
+				for (const p of s.participants.slice(0, 5)) {
+					const b = document.createElement("div");
+					b.className = "bubble" + (p.speaking ? " speaking" : "");
+					b.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
+					avatars.appendChild(b);
+				}
+				const names = s.participants.map((p) => p.label);
+				who.textContent = names.length > 2 ? `${names[0]} + ${names.length - 1} others` : names.join(" & ");
+				hint.textContent = names.length > 1 ? "are in a voice call" : "is in a voice call";
+			});
+			document.getElementById("join").onclick = () => window.murphyPopup.join();
+			document.getElementById("close").onclick = () => window.murphyPopup.dismiss();
+		</script>
+	</body>
+</html>

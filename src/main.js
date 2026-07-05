@@ -2,6 +2,7 @@ const { app, session } = require("electron");
 const { createShellWindow, showWindow } = require("./shell-window");
 const { setupSession } = require("./session-setup");
 const { createTray } = require("./tray");
+const { startVoiceMonitor } = require("./voice-monitor");
 
 app.setAppUserModelId("com.murphycloud.desktop");
 // Default-on when Wayland is detected on current Chromium; harmless insurance.
@@ -40,6 +41,7 @@ if (!app.requestSingleInstanceLock()) {
 		app.on("before-quit", () => ses.cookies.flushStore().catch(() => {}));
 		shell = createShellWindow();
 		createTray(() => shell.win);
+		startVoiceMonitor(ses, shell);
 
 		app.on("activate", () => {
 			if (shell) showWindow(shell.win);
