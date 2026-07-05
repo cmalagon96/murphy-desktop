@@ -1,7 +1,7 @@
 {
   "name": "murphy-desktop",
   "productName": "Murphy Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop app for murphy-cloud.com — the Murphy family cloud",
   "main": "src/main.js",
   "desktopName": "murphy-desktop",
@@ -54,8 +54,14 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        },
+        {
+          "target": "zip",
+          "arch": ["universal"]
+        }
       ],
       "icon": "build/icon.png",
       "category": "public.app-category.social-networking"

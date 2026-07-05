@@ -43,6 +43,13 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npx electron-builder ${{ matrix.args }} --publish never
+      # Retry: hdiutil on macOS runners intermittently fails with I/O errors
+      - run: |
+          for i in 1 2 3; do
+            npx electron-builder ${{ matrix.args }} --publish never && exit 0
+            echo "build attempt $i failed, retrying..."
+          done
+          exit 1
+        shell: bash
       - run: gh release upload "$GITHUB_REF_NAME" ${{ matrix.assets }} --clobber
         shell: bash
