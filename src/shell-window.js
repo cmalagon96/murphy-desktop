@@ -168,6 +168,8 @@ function createShellWindow() {
 	}
 
 	// SPA hash-hop when Element is already loaded (instant); full load otherwise.
+	// The headphones icon means "connect me to voice" (Discord voice-channel
+	// semantics), so after landing in the room we auto-click Join.
 	function showLoungeRoom(pane) {
 		const wc = pane.webContents;
 		const target = "#/room/" + encodeURIComponent(LOUNGE_ALIAS);
@@ -176,6 +178,31 @@ function createShellWindow() {
 		} else {
 			wc.loadURL("https://element.murphy-cloud.com/" + target);
 		}
+		autoJoinCall(wc);
+	}
+
+	// Poll all frames (the lobby may live in the Element Call iframe) for a
+	// Join button and click it. Silently gives up if already in the call or
+	// nothing appears (e.g. user navigated away mid-poll).
+	let autoJoinTimer = null;
+	function autoJoinCall(wc) {
+		clearInterval(autoJoinTimer);
+		const deadline = Date.now() + 15000;
+		autoJoinTimer = setInterval(async () => {
+			if (Date.now() > deadline || wc.isDestroyed()) return clearInterval(autoJoinTimer);
+			for (const frame of wc.mainFrame.framesInSubtree()) {
+				try {
+					const clicked = await frame.executeJavaScript(`(() => {
+						const byTestId = document.querySelector('[data-testid="join-call-button"], [data-testId="join-call-button"]');
+						const btn = byTestId || [...document.querySelectorAll("button")]
+							.find(b => /^join( call)?$/i.test((b.textContent || "").trim()));
+						if (btn) { btn.click(); return true; }
+						return false;
+					})()`, true);
+					if (clicked) return clearInterval(autoJoinTimer);
+				} catch {}
+			}
+		}, 600);
 	}
 
 	ipcMain.on("murphy:navigate", (_e, section) => showSection(section));
@@ -190,15 +217,11 @@ function createShellWindow() {
 		}
 	});
 
-	// Voice-monitor popup "Join": land in the Element pane, deep-linked to the
-	// room when the LiveKit room name is a plain Matrix room id.
-	function joinVoiceRoom(roomId) {
-		showSection("chat");
-		if (roomId && roomId.startsWith("!")) {
-			getPane("chat").webContents.loadURL(
-				"https://element.murphy-cloud.com/#/room/" + encodeURIComponent(roomId)
-			);
-		}
+	// Voice-monitor popup "Join": voice lives in the Lounge, and MatrixRTC's
+	// LiveKit room names are opaque hashes (not Matrix room ids), so route to
+	// the lounge section — which auto-joins the call.
+	function joinVoiceRoom(_roomId) {
+		showSection("lounge");
 		showWindow(win);
 	}
 
