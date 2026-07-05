@@ -16,7 +16,10 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --title "Murphy Desktop ${GITHUB_REF_NAME#v}" --notes "Installers for Windows, macOS, and Linux. Unsigned builds — Windows: SmartScreen → More info → Run anyway; macOS: right-click → Open on first launch."
+      - run: |
+          gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" \
+            --title "Murphy Desktop ${GITHUB_REF_NAME#v}" \
+            --notes "Installers for Windows, macOS, and Linux. Unsigned builds: on Windows, SmartScreen shows 'Windows protected your PC' (More info -> Run anyway); on macOS, right-click -> Open on first launch."
 
   build:
     needs: create-release
