@@ -1,8 +1,6 @@
 // Dev-only: verifies the login background is actually animating.
-// Captures a background-only region twice, 1.6s apart, and compares pixels.
-const { app, session } = require("electron");
-
-const { createMainWindow } = require("../src/window-manager");
+// Standalone (own BrowserWindow) so it doesn't depend on the shell modules.
+const { app, BrowserWindow, session } = require("electron");
 const { setupSession } = require("../src/session-setup");
 
 const REGION = { x: 0, y: 0, width: 320, height: 420 }; // left edge: pure background, no caret
@@ -10,12 +8,16 @@ const REGION = { x: 0, y: 0, width: 320, height: 420 }; // left edge: pure backg
 app.whenReady().then(async () => {
 	const ses = session.fromPartition("persist:murphy");
 	setupSession(ses);
-	await ses.clearCache(); // drop any stale customcss (max-age=86400)
-	const win = createMainWindow();
-	app.isQuitting = true;
+	await ses.clearCache();
+	const win = new BrowserWindow({
+		width: 1280,
+		height: 820,
+		webPreferences: { partition: "persist:murphy", contextIsolation: true, sandbox: true },
+	});
+	win.loadURL("https://murphy-cloud.com");
 
 	win.webContents.on("did-finish-load", async () => {
-		await new Promise((r) => setTimeout(r, 4000)); // let the 8MB gif load + start
+		await new Promise((r) => setTimeout(r, 4000));
 		const a = (await win.webContents.capturePage(REGION)).toBitmap();
 		await new Promise((r) => setTimeout(r, 1600));
 		const b = (await win.webContents.capturePage(REGION)).toBitmap();

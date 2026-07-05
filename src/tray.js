@@ -1,6 +1,6 @@
 const { app, Menu, Tray } = require("electron");
 const path = require("path");
-const { showWindow } = require("./window-manager");
+const { showWindow } = require("./shell-window");
 
 function createTray(getWindow) {
 	const tray = new Tray(path.join(__dirname, "..", "build", "icon.png"));

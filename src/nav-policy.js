@@ -16,9 +16,7 @@ function isAllowedURL(url) {
 	return !!u && (u.protocol === "https:" || u.protocol === "http:") && ALLOWED_HOST.test(u.hostname);
 }
 
-function applyNavPolicy(win) {
-	const wc = win.webContents;
-
+function applyNavPolicy(wc) {
 	// will-frame-navigate fires for main frame AND subframes (will-navigate is
 	// main-frame-only and would double-fire openExternal alongside this).
 	wc.on("will-frame-navigate", (event) => {

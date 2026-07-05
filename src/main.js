@@ -1,5 +1,5 @@
 const { app, session } = require("electron");
-const { createMainWindow, showWindow } = require("./window-manager");
+const { createShellWindow, showWindow } = require("./shell-window");
 const { setupSession } = require("./session-setup");
 const { createTray } = require("./tray");
 
@@ -17,10 +17,10 @@ app.userAgentFallback = app.userAgentFallback
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
-	let mainWindow = null;
+	let shell = null;
 
 	app.on("second-instance", () => {
-		if (mainWindow) showWindow(mainWindow);
+		if (shell) showWindow(shell.win);
 	});
 
 	app.on("before-quit", () => {
@@ -33,11 +33,11 @@ if (!app.requestSingleInstanceLock()) {
 
 	app.whenReady().then(() => {
 		setupSession(session.fromPartition("persist:murphy"));
-		mainWindow = createMainWindow();
-		createTray(() => mainWindow);
+		shell = createShellWindow();
+		createTray(() => shell.win);
 
 		app.on("activate", () => {
-			if (mainWindow) showWindow(mainWindow);
+			if (shell) showWindow(shell.win);
 		});
 	});
 }

@@ -1,16 +1,14 @@
-// Dev-only smoke test: boots the real window stack, waits for murphy-cloud.com
-// to render, screenshots it, prints UA/title/console errors, and exits.
-// Run: npm run smoke [-- <output.png>]
+// Dev-only smoke test for the shell architecture: boots the BaseWindow shell,
+// screenshots the Home screen, then opens the Files pane and screenshots that.
+// Run: npm run smoke [-- <outdir>]
 const { app, session } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
-const { createMainWindow } = require("../src/window-manager");
+const { createShellWindow } = require("../src/shell-window");
 const { setupSession } = require("../src/session-setup");
 
-const outPath = process.argv[2] && process.argv[2].endsWith(".png")
-	? process.argv[2]
-	: path.join(__dirname, "..", "smoke.png");
+const outDir = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[2] : path.join(__dirname, "..");
 
 app.userAgentFallback = app.userAgentFallback
 	.split(" ")
@@ -18,31 +16,38 @@ app.userAgentFallback = app.userAgentFallback
 	.join(" ");
 
 const errors = [];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-app.whenReady().then(() => {
-	const ses = session.fromPartition("persist:murphy");
-	setupSession(ses);
-	const win = createMainWindow();
+app.whenReady().then(async () => {
+	setupSession(session.fromPartition("persist:murphy"));
+	const { win, shellView, panes, showSection } = createShellWindow();
 	app.isQuitting = true; // let close actually close in smoke mode
 
-	win.webContents.on("console-message", (_e, level, message) => {
-		if (level >= 3) errors.push(message);
+	shellView.webContents.on("console-message", (_e, level, message) => {
+		if (level >= 3) errors.push("[shell] " + message);
 	});
 
-	win.webContents.on("did-finish-load", async () => {
-		await new Promise((r) => setTimeout(r, 3500)); // let fonts/theme settle
-		const image = await win.webContents.capturePage();
-		fs.writeFileSync(outPath, image.toPNG());
-		console.log("TITLE: " + win.webContents.getTitle());
-		console.log("URL:   " + win.webContents.getURL());
-		console.log("UA:    " + ses.getUserAgent());
-		console.log("SHOT:  " + outPath);
+	shellView.webContents.on("did-finish-load", async () => {
+		await sleep(2000);
+		const home = await shellView.webContents.capturePage();
+		fs.writeFileSync(path.join(outDir, "shell-home.png"), home.toPNG());
+		console.log("HOME SHOT: shell-home.png");
+
+		showSection("files");
+		const pane = panes.get("files");
+		pane.webContents.on("console-message", (_e, level, message) => {
+			if (level >= 3) errors.push("[files] " + message);
+		});
+		await new Promise((resolve) => pane.webContents.once("did-finish-load", resolve));
+		await sleep(3500);
+		// Capture the whole window composition (rail + pane) via the shell view
+		// for the chrome, and the pane contents separately.
+		const paneShot = await pane.webContents.capturePage();
+		fs.writeFileSync(path.join(outDir, "shell-files-pane.png"), paneShot.toPNG());
+		console.log("FILES PANE URL: " + pane.webContents.getURL());
+		console.log("FILES SHOT: shell-files-pane.png");
+		console.log("PANE UA: " + (pane.webContents.getUserAgent().includes("Electron") ? "LEAKS ELECTRON" : "clean"));
 		console.log("CONSOLE-ERRORS: " + (errors.length ? "\n  " + errors.join("\n  ") : "none"));
 		app.exit(0);
-	});
-
-	win.webContents.on("did-fail-load", (_e, code, desc, url) => {
-		console.error(`LOAD FAILED ${code} ${desc} ${url}`);
-		app.exit(1);
 	});
 });

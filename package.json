@@ -11,12 +11,16 @@
   "scripts": {
     "start": "electron .",
     "smoke": "electron scripts/smoke.js",
-    "dist:linux": "electron-builder --linux",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac"
+    "dist:linux": "npm run build:shell && electron-builder --linux",
+    "dist:win": "npm run build:shell && electron-builder --win",
+    "dist:mac": "npm run build:shell && electron-builder --mac",
+    "build:shell": "vite build --config shell/vite.config.mjs shell",
+    "dev:shell": "vite --config shell/vite.config.mjs shell"
   },
   "dependencies": {
-    "electron-window-state": "^5.0.3"
+    "electron-window-state": "^5.0.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "build": {
     "appId": "com.murphycloud.desktop",
@@ -31,6 +35,7 @@
     },
     "files": [
       "src/**/*",
+      "shell/dist/**/*",
       "build/icon.png",
       "package.json"
     ],
@@ -56,11 +61,15 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ],
       "icon": "build/icon.png",
@@ -68,7 +77,13 @@
     }
   },
   "devDependencies": {
+    "@radix-ui/react-tooltip": "^1.2.11",
+    "@tailwindcss/vite": "^4.3.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "electron": "^43.0.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "lucide-react": "^1.23.0",
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.3"
   }
 }

@@ -46,6 +46,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: npm run build:shell
       # Retry: hdiutil on macOS runners intermittently fails with I/O errors
       - run: |
           for i in 1 2 3; do
