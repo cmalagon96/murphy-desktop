@@ -36,12 +36,9 @@ app.whenReady().then(async () => {
 	console.log("CHAT URL: " + chatUrl);
 	console.log("CHAT: " + (/^https:\/\/element\.murphy-cloud\.com/.test(chatUrl) ? "OK (on element)" : "PROBLEM"));
 
+	// "calls" must alias to the same Element pane — a second pane would trip
+	// Element's one-instance-per-profile lock ("connected in another tab").
 	showSection("calls");
-	const calls = panes.get("calls");
-	await settle(calls, 9000);
-	const callsUrl = calls.webContents.getURL();
-	fs.writeFileSync(path.join(outDir, "sso-calls.png"), (await calls.webContents.capturePage()).toPNG());
-	console.log("CALLS URL: " + callsUrl);
-	console.log("CALLS: " + (/^https:\/\/murphy-cloud\.com/.test(callsUrl) ? "OK (on murphy_calls)" : "PROBLEM"));
+	console.log("CALLS ALIAS: " + (panes.has("calls") ? "PROBLEM (separate pane exists)" : "OK (shares chat pane)"));
 	app.exit(0);
 });

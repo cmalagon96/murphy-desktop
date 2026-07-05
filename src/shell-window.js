@@ -8,10 +8,15 @@ const RAIL_WIDTH = 72; // must match the rail width in shell/src/Rail.jsx
 const SECTION_URLS = {
 	files: "https://murphy-cloud.com/apps/files/",
 	chat: "https://element.murphy-cloud.com/",
-	calls: "https://murphy-cloud.com/apps/murphy_calls/",
 	photos: "https://murphy-cloud.com/apps/photos/",
 	rosie: "https://rosie.murphy-cloud.com/",
 };
+
+// Element Web allows only ONE instance per profile ("connected in another
+// tab"). The murphy_calls page embeds the same Element, so a separate Calls
+// pane can never coexist with Chat — calls live inside the Element pane
+// (the Discord-style call UI is patched into its bundled Element Call).
+const SECTION_ALIAS = { calls: "chat" };
 
 function createShellWindow() {
 	const state = windowStateKeeper({ defaultWidth: 1280, defaultHeight: 820 });
@@ -109,6 +114,7 @@ function createShellWindow() {
 	}
 
 	function showSection(section) {
+		section = SECTION_ALIAS[section] || section;
 		if (section !== "home" && !SECTION_URLS[section]) return;
 		const prev = panes.get(active);
 		if (prev) prev.setVisible(false);

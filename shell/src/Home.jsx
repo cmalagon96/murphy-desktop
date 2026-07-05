@@ -13,9 +13,9 @@ const TILES = [
 		span: "sm:col-span-2", // featured: chat is the heart of the app
 	},
 	{
-		id: "calls",
+		id: "chat",
 		title: "Start a Call",
-		blurb: "Voice & video, Discord-style",
+		blurb: "Voice & video, Discord-style — pick a room and hop in",
 		icon: Phone,
 		accent: "text-murphy-cyan",
 		glow: "hover:shadow-[0_10px_40px_rgba(73,213,200,0.22)]",
@@ -70,7 +70,7 @@ export default function Home({ onNavigate }) {
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{TILES.map(({ id, title, blurb, icon: Icon, accent, glow, tint, span = "" }) => (
 						<button
-							key={id}
+							key={title}
 							onClick={() => onNavigate(id)}
 							className={
 								span +
