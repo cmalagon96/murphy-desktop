@@ -1,7 +1,7 @@
 {
   "name": "murphy-desktop",
   "productName": "Murphy Desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Desktop app for murphy-cloud.com — the Murphy family cloud",
   "main": "src/main.js",
   "desktopName": "murphy-desktop",
