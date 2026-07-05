@@ -1,0 +1,61 @@
+{
+  "name": "murphy-desktop",
+  "productName": "Murphy Desktop",
+  "version": "0.1.0",
+  "description": "Desktop app for murphy-cloud.com — the Murphy family cloud",
+  "main": "src/main.js",
+  "author": "Cal Malagon",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron scripts/smoke.js",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-window-state": "^5.0.3"
+  },
+  "build": {
+    "appId": "com.murphycloud.desktop",
+    "productName": "Murphy Desktop",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Network",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.social-networking"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}
