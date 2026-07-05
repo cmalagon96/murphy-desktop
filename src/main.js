@@ -32,7 +32,12 @@ if (!app.requestSingleInstanceLock()) {
 	app.on("window-all-closed", () => {});
 
 	app.whenReady().then(() => {
-		setupSession(session.fromPartition("persist:murphy"));
+		const ses = session.fromPartition("persist:murphy");
+		setupSession(ses);
+		// Chromium flushes cookies lazily; a rough exit (crash, SIGKILL) can lose
+		// the Nextcloud login. Flush periodically and on quit.
+		setInterval(() => ses.cookies.flushStore().catch(() => {}), 5 * 60 * 1000);
+		app.on("before-quit", () => ses.cookies.flushStore().catch(() => {}));
 		shell = createShellWindow();
 		createTray(() => shell.win);
 

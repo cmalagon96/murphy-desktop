@@ -39,6 +39,7 @@ function createShellWindow() {
 	});
 	win.contentView.addChildView(shellView);
 	shellView.webContents.loadFile(path.join(__dirname, "..", "shell", "dist", "index.html"));
+	wireReloadKeys(shellView.webContents);
 
 	const panes = new Map();
 	let active = "home";
@@ -49,6 +50,13 @@ function createShellWindow() {
 		const pane = panes.get(active);
 		if (pane) pane.setBounds({ x: RAIL_WIDTH, y: 0, width: Math.max(0, width - RAIL_WIDTH), height });
 	}
+
+	// Synapse renders OIDC errors (missing_session/mismatching_session) at the
+	// callback URL. Users never legitimately *land* there — success 302s on to
+	// Element — so a committed navigation to it means a broken SSO hop. The
+	// classic cause here: two Element surfaces (Chat pane + Calls iframe) racing
+	// the dance in one cookie jar. Retrying after the winner finishes succeeds.
+	const SSO_ERROR_URL = /^https:\/\/matrix\.murphy-cloud\.com\/_synapse\/client\/oidc\/callback/;
 
 	function getPane(section) {
 		if (panes.has(section)) return panes.get(section);
@@ -61,10 +69,43 @@ function createShellWindow() {
 			},
 		});
 		applyNavPolicy(pane.webContents);
+		wireReloadKeys(pane.webContents);
+
+		let ssoRetryAt = 0;
+		const maybeRecoverSSO = (url) => {
+			if (!SSO_ERROR_URL.test(url)) return;
+			const now = Date.now();
+			if (now - ssoRetryAt < 60_000) return; // one retry, no loops
+			ssoRetryAt = now;
+			setTimeout(() => pane.webContents.loadURL(SECTION_URLS[section]), 1500);
+		};
+		pane.webContents.on("did-navigate", (_e, url) => maybeRecoverSSO(url));
+		pane.webContents.on("did-frame-navigate", (_e, url, _code, _status, isMainFrame) => {
+			if (!isMainFrame) maybeRecoverSSO(url); // Calls: error renders inside the murphy_calls iframe
+		});
+
 		pane.webContents.loadURL(SECTION_URLS[section]);
 		panes.set(section, pane);
 		win.contentView.addChildView(pane);
 		return pane;
+	}
+
+	// Ctrl/Cmd+R and F5 reload the active pane back to its section root (a
+	// plain reload would re-request the failed SSO callback URL itself).
+	function reloadActive() {
+		if (active === "home") return;
+		const pane = panes.get(active);
+		if (pane) pane.webContents.loadURL(SECTION_URLS[active]);
+	}
+
+	function wireReloadKeys(wc) {
+		wc.on("before-input-event", (event, input) => {
+			if (input.type !== "keyDown") return;
+			if ((input.key.toLowerCase() === "r" && (input.control || input.meta)) || input.key === "F5") {
+				event.preventDefault();
+				reloadActive();
+			}
+		});
 	}
 
 	function showSection(section) {
