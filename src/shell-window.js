@@ -63,6 +63,15 @@ function createShellWindow() {
 	// the dance in one cookie jar. Retrying after the winner finishes succeeds.
 	const SSO_ERROR_URL = /^https:\/\/matrix\.murphy-cloud\.com\/_synapse\/client\/oidc\/callback/;
 
+	// The shell rail replaces Nextcloud's own header inside panes — hide it.
+	// (It also linked to the murphy_calls page, whose embedded Element would
+	// collide with the Chat pane's instance.)
+	const NC_HEADER_CSS = `
+		#header { display: none !important; }
+		#content, #content-vue { margin-top: 0 !important; height: 100% !important; }
+	`;
+	const MURPHY_CALLS_URL = /murphy-cloud\.com\/(index\.php\/)?apps\/murphy_calls/;
+
 	function getPane(section) {
 		if (panes.has(section)) return panes.get(section);
 		const pane = new WebContentsView({
@@ -87,6 +96,19 @@ function createShellWindow() {
 		pane.webContents.on("did-navigate", (_e, url) => maybeRecoverSSO(url));
 		pane.webContents.on("did-frame-navigate", (_e, url, _code, _status, isMainFrame) => {
 			if (!isMainFrame) maybeRecoverSSO(url); // Calls: error renders inside the murphy_calls iframe
+		});
+
+		// Any route into murphy_calls (would embed a second Element) → Chat section.
+		pane.webContents.on("will-navigate", (event, url) => {
+			if (MURPHY_CALLS_URL.test(url)) {
+				event.preventDefault();
+				showSection("chat");
+			}
+		});
+		pane.webContents.on("dom-ready", () => {
+			if (/^https:\/\/murphy-cloud\.com\//.test(pane.webContents.getURL())) {
+				pane.webContents.insertCSS(NC_HEADER_CSS);
+			}
 		});
 
 		pane.webContents.loadURL(SECTION_URLS[section]);

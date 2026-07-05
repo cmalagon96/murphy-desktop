@@ -60,7 +60,16 @@ function greeting() {
 
 export default function Home({ onNavigate }) {
 	return (
-		<div className="murphy-home-bg flex h-full flex-col overflow-y-auto">
+		<div className="relative h-full overflow-hidden">
+			<img
+				src="./gojo-vs-sukuna.gif"
+				alt=""
+				aria-hidden
+				draggable="false"
+				className="absolute inset-0 h-full w-full object-cover"
+			/>
+			<div className="murphy-home-overlay absolute inset-0" />
+			<div className="relative flex h-full flex-col overflow-y-auto">
 			<div className="mx-auto flex w-full max-w-4xl flex-1 flex-col justify-center px-10 py-12">
 				<p className="mb-1 text-lg text-murphy-muted">{greeting()} —</p>
 				<h1 className="murphy-gradient-text mb-10 w-fit font-display text-5xl leading-tight font-bold">
@@ -94,10 +103,11 @@ export default function Home({ onNavigate }) {
 				</div>
 			</div>
 
-			<footer className="flex items-center justify-center gap-2 pb-5 text-xs text-murphy-muted/70">
-				<Globe size={12} aria-hidden />
-				murphy-cloud.com — your private cloud
-			</footer>
+				<footer className="flex items-center justify-center gap-2 pb-5 text-xs text-murphy-muted/70">
+					<Globe size={12} aria-hidden />
+					murphy-cloud.com — your private cloud
+				</footer>
+			</div>
 		</div>
 	);
 }

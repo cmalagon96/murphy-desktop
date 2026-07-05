@@ -33,12 +33,12 @@ body,
 	user-select: none;
 }
 
-/* Home backdrop: soft brand glow rising from the corners of deep plum */
-.murphy-home-bg {
+/* Home backdrop overlay: darkens the Gojo-vs-Sukuna gif enough for the tiles
+   to stay readable while keeping the fight visible + a magenta brand glow. */
+.murphy-home-overlay {
 	background:
-		radial-gradient(1200px 700px at 85% -10%, rgba(194, 24, 91, 0.28), transparent 60%),
-		radial-gradient(900px 600px at -10% 110%, rgba(73, 213, 200, 0.14), transparent 55%),
-		linear-gradient(180deg, #220726 0%, var(--color-murphy-plum) 100%);
+		radial-gradient(1200px 700px at 85% -10%, rgba(194, 24, 91, 0.3), transparent 60%),
+		linear-gradient(180deg, rgba(34, 7, 38, 0.8) 0%, rgba(26, 0, 26, 0.86) 55%, rgba(26, 0, 26, 0.93) 100%);
 }
 
 .murphy-gradient-text {

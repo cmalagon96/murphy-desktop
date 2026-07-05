@@ -10,6 +10,10 @@ const { setupSession } = require("../src/session-setup");
 
 const outDir = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[2] : path.join(__dirname, "..");
 
+// MURPHY_PROFILE=<userData dir> reuses an existing profile (e.g. the packaged
+// app's, for logged-in captures). The app must not be running at the time.
+if (process.env.MURPHY_PROFILE) app.setPath("userData", process.env.MURPHY_PROFILE);
+
 app.userAgentFallback = app.userAgentFallback
 	.split(" ")
 	.filter((t) => !t.startsWith("Electron/") && !t.toLowerCase().startsWith("murphy"))
