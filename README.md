@@ -8,6 +8,8 @@ Desktop app for [murphy-cloud.com](https://murphy-cloud.com) — launch the Murp
 - **Stays logged in** across restarts (persistent session).
 - **System tray**: closing the window (X) hides to tray; right-click the tray icon → Open / Quit.
 - **Calls work fully**: mic, camera, and screen sharing (native OS picker), including the embedded Element Call widget.
+- **Call widget** (Discord-style): while you're in a call and the app isn't focused — minimized, hidden to tray, or behind a game — a small strip appears at the top-left of the screen with everyone's avatar (real Nextcloud profile pictures) and a speaking glow. Drag it anywhere; toggle it from the tray.
+- **Per-person volume**: hover someone's avatar on the widget for a volume slider (persists across calls and restarts). The same control also exists natively inside the call UI (tile ⋮ menu → Volume / Mute for me).
 - **Native notifications** from Nextcloud land in your OS notification center.
 - Links outside murphy-cloud.com open in your normal browser; the app never leaves the family domains.
 
@@ -41,11 +43,13 @@ npm run dist:mac     # → REQUIRES macOS — use the release workflow instead
 
 ### Screen-share audio (platform truth)
 
-Sharing your screen sends **system audio on Windows only** (Chromium's audio
-loopback exists solely there — Discord has the same gap without kernel-level
-drivers). Linux/macOS sharers send video without system audio. *Receiving*
-share audio works everywhere; each person's tile has its own local
-volume/"Mute for me" controls in the call menu.
+Sharing your screen **never sends your system audio unless you opt in**: the
+tray checkbox *"Share system audio when screensharing"* is **off by default**,
+so nobody hears what you're hearing. Turning it on only has an effect on
+**Windows** (Chromium's audio loopback exists solely there — Discord has the
+same gap without kernel-level drivers); Linux/macOS sharers always send video
+without system audio. *Receiving* share audio works everywhere; each person's
+tile has its own local volume/"Mute for me" controls in the call menu.
 
 ### Unsigned-build caveats (no code-signing certs purchased)
 
@@ -55,12 +59,17 @@ volume/"Mute for me" controls in the call menu.
 ## Layout
 
 ```
-src/main.js            app lifecycle, single-instance lock, UA scrub
-src/window-manager.js  main window, bounds persistence, close-to-tray
-src/tray.js            tray icon + menu
-src/session-setup.js   persist:murphy session, permissions, screen-share handler
-src/nav-policy.js      isAllowedURL() — the *.murphy-cloud.com allow-list, nav/window-open policy
-build/icon.png         app icon (generated from ~/nextcloud/favicon.svg)
+src/main.js               app lifecycle, single-instance lock, UA scrub
+src/shell-window.js       BaseWindow + React shell + lazy section panes, close-to-tray
+src/tray.js               tray icon + menu (overlay + share-audio toggles)
+src/session-setup.js      persist:murphy session, permissions, screen-share handler
+src/settings.js           tiny JSON settings store (userData/settings.json)
+src/nav-policy.js         isAllowedURL() — the *.murphy-cloud.com allow-list, nav/window-open policy
+src/voice-monitor.js      voice-state polling, call popup, call widget, per-person volume
+src/call-overlay.html     the call widget (avatars + volume popover)
+src/call-popup.html       incoming-call "Join" toast
+shell/                    Vite/React app for the rail + home screen
+build/icon.png            app icon (generated from ~/nextcloud/favicon.svg)
 ```
 
-Planned v2 (see `~/.claude/plans/hazy-plotting-fox.md`): always-on-top voice-call overlay (polls `murphy_calls` `/voice-state`) and a global mute hotkey. Press-and-hold push-to-talk is explicitly out of scope until a native key-hook dependency is warranted.
+Still out of scope: a global mute hotkey and press-and-hold push-to-talk, until a native key-hook dependency is warranted.

@@ -1,5 +1,6 @@
 const { desktopCapturer } = require("electron");
 const { isAllowedURL } = require("./nav-policy");
+const { getSetting } = require("./settings");
 
 // Deny-by-default: only what this stack actually uses. media = mic/cam,
 // display-capture = screen share, fullscreen = call fullscreen button,
@@ -42,15 +43,19 @@ function setupSession(ses) {
 	// delegates to the desktop portal (KDE/PipeWire on Wayland); the callback
 	// body is only the fallback path for platforms without a system picker.
 	// Screen-share audio: Chromium only supports system-audio loopback on
-	// Windows — omitting it there made every share silent. Linux/macOS have
-	// no loopback (same platform gap Discord has).
+	// Windows (Linux/macOS have no loopback — same platform gap Discord has),
+	// and it's opt-in via the tray toggle, default OFF, so a share never leaks
+	// what the sharer is hearing unless they deliberately enabled it (game
+	// nights). getSetting is read per-request so the toggle applies to the
+	// next share without a restart.
 	ses.setDisplayMediaRequestHandler(
 		(request, callback) => {
 			desktopCapturer
 				.getSources({ types: ["screen"] })
 				.then((sources) => {
 					const streams = { video: sources[0] };
-					if (request.audioRequested && process.platform === "win32") streams.audio = "loopback";
+					if (request.audioRequested && process.platform === "win32" && getSetting("shareSystemAudio"))
+						streams.audio = "loopback";
 					callback(streams);
 				})
 				.catch(() => callback({}));

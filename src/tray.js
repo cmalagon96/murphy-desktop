@@ -1,6 +1,7 @@
 const { app, Menu, Tray } = require("electron");
 const path = require("path");
 const { showWindow } = require("./shell-window");
+const { getSetting, setSetting } = require("./settings");
 
 function createTray(getWindow, voiceMonitor) {
 	const tray = new Tray(path.join(__dirname, "..", "build", "icon.png"));
@@ -11,8 +12,18 @@ function createTray(getWindow, voiceMonitor) {
 			{
 				label: "In-call overlay",
 				type: "checkbox",
-				checked: true,
-				click: (item) => voiceMonitor.setOverlayEnabled(item.checked),
+				checked: getSetting("overlayEnabled"),
+				click: (item) => {
+					setSetting("overlayEnabled", item.checked);
+					voiceMonitor.setOverlayEnabled(item.checked);
+				},
+			},
+			{
+				// Windows-only effect (Chromium loopback); harmless elsewhere.
+				label: "Share system audio when screensharing",
+				type: "checkbox",
+				checked: getSetting("shareSystemAudio"),
+				click: (item) => setSetting("shareSystemAudio", item.checked),
 			},
 			{ type: "separator" },
 			{

@@ -19,6 +19,8 @@
 				display: flex; align-items: center; justify-content: center;
 				font: 700 15px system-ui, sans-serif; color: #fff;
 				opacity: 0.92;
+				background-size: cover; background-position: center;
+				-webkit-app-region: no-drag; /* drag regions swallow mouse events — hover needs this */
 			}
 			.speaking {
 				box-shadow: 0 0 0 2.5px #23a55a;
@@ -30,27 +32,86 @@
 				50% { box-shadow: 0 0 0 5px rgba(35, 165, 90, 0.4); }
 				100% { box-shadow: 0 0 0 2.5px #23a55a; }
 			}
+			/* per-person volume popover — appears in the expanded row below the strip */
+			#vol {
+				display: flex; align-items: center; gap: 8px;
+				width: max-content; margin: 0 4px;
+				padding: 6px 12px;
+				background: rgba(16, 16, 20, 0.86);
+				border: 1px solid rgba(255, 255, 255, 0.14);
+				border-radius: 999px;
+				font: 500 12px system-ui, sans-serif; color: #fff;
+				-webkit-app-region: no-drag;
+			}
+			#vol[hidden] { display: none; }
+			#volslider { width: 110px; accent-color: #23a55a; -webkit-app-region: no-drag; }
+			#volpct { min-width: 34px; text-align: right; opacity: 0.8; }
 		</style>
 	</head>
 	<body>
 		<div id="strip"></div>
+		<div id="vol" hidden>
+			<span id="volname"></span>
+			<input id="volslider" type="range" min="0" max="1" step="0.05" />
+			<span id="volpct"></span>
+		</div>
 		<script>
 			const strip = document.getElementById("strip");
+			const vol = document.getElementById("vol");
+			const volname = document.getElementById("volname");
+			const volslider = document.getElementById("volslider");
+			const volpct = document.getElementById("volpct");
+			let volTarget = null; // localpart the popover controls
+
 			function colorFor(label) {
 				let h = 0;
 				for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
 				return `hsl(${((h % 360) + 360) % 360} 55% 42%)`;
 			}
+			function pct(v) {
+				return Math.round(v * 100) + "%";
+			}
+			function openVol(p) {
+				if (volTarget !== p.localpart) {
+					volTarget = p.localpart;
+					volslider.value = p.volume ?? 1;
+				}
+				volname.textContent = p.label;
+				volpct.textContent = pct(parseFloat(volslider.value));
+				vol.hidden = false;
+				window.murphyOverlay.setExpanded(true);
+			}
+			function closeVol() {
+				volTarget = null;
+				vol.hidden = true;
+				window.murphyOverlay.setExpanded(false);
+			}
+			volslider.addEventListener("input", () => {
+				if (!volTarget) return;
+				volpct.textContent = pct(parseFloat(volslider.value));
+				window.murphyOverlay.setVolume(volTarget, parseFloat(volslider.value));
+			});
+			document.body.addEventListener("mouseleave", closeVol);
+
 			window.murphyOverlay.onState((s) => {
 				strip.innerHTML = "";
+				let targetSeen = false;
 				for (const p of s.participants.slice(0, 8)) {
 					const b = document.createElement("div");
 					b.className = "bubble" + (p.speaking ? " speaking" : "");
-					b.style.background = colorFor(p.label || "?");
-					b.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
+					if (p.avatar) {
+						b.style.backgroundImage = `url(${p.avatar})`;
+					} else {
+						b.style.background = colorFor(p.label || "?");
+						b.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
+					}
 					b.title = p.label;
+					// hover your own bubble does nothing — you can't set your own volume
+					if (!p.self) b.addEventListener("mouseenter", () => openVol(p));
+					if (p.localpart === volTarget) targetSeen = true;
 					strip.appendChild(b);
 				}
+				if (volTarget && !targetSeen) closeVol(); // they left the call mid-hover
 			});
 		</script>
 	</body>

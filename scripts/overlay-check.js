@@ -9,7 +9,7 @@ const outDir = process.argv[2] && fs.existsSync(process.argv[2]) ? process.argv[
 
 app.whenReady().then(() => {
 	const stubShell = {
-		win: { isFocused: () => false },
+		win: { isFocused: () => false, on: () => {} }, // unfocused → overlay shows
 		getActiveSection: () => "home",
 		joinVoiceRoom: () => {},
 	};
