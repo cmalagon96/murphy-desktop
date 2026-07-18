@@ -5,7 +5,11 @@ const path = require("path");
 const DEFAULTS = {
 	overlayEnabled: true, // tray "In-call overlay" checkbox
 	shareSystemAudio: false, // tray "Share system audio when screensharing" (win32 loopback)
-	participantVolumes: {}, // matrix localpart → 0..1, set from the overlay widget
+	participantVolumes: {}, // matrix localpart → 0..2, set from the overlay widget
+	mutedParticipants: {}, // matrix localpart → true: mute-for-me, keeps the saved volume intact
+	overlayDisplayNames: "speaking", // overlay name labels: "always" | "speaking" | "never"
+	overlayDisplayUsers: "always", // "speaking" = overlay shows only users who are talking
+	callAdmins: [], // localparts shown the Kick action (fallback gate; server check preferred)
 };
 
 let settings = null; // lazy: userData path isn't reliable before app is ready

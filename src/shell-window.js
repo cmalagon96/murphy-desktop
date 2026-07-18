@@ -225,7 +225,22 @@ function createShellWindow() {
 		showWindow(win);
 	}
 
-	return { win, shellView, panes, showSection, getActiveSection: () => active, joinVoiceRoom };
+	// Overlay "Message": land on the user in Element. ?action=chat asks Element
+	// to open/create the DM directly; without support it still shows the user
+	// panel with a Message button. Same SPA hash-hop pattern as the Lounge.
+	function openDMWith(mxid) {
+		showSection("chat");
+		const wc = panes.get("chat").webContents;
+		const target = "#/user/" + encodeURIComponent(mxid) + "?action=chat";
+		if (/^https:\/\/element\.murphy-cloud\.com\//.test(wc.getURL())) {
+			wc.executeJavaScript(`location.hash = ${JSON.stringify(target)}`).catch(() => {});
+		} else {
+			wc.loadURL("https://element.murphy-cloud.com/" + target);
+		}
+		showWindow(win);
+	}
+
+	return { win, shellView, panes, showSection, getActiveSection: () => active, joinVoiceRoom, openDMWith };
 }
 
 function showWindow(win) {

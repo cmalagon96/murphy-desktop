@@ -19,6 +19,21 @@ function createTray(getWindow, voiceMonitor) {
 				},
 			},
 			{
+				label: "Overlay name labels",
+				submenu: ["always", "speaking", "never"].map((mode) => ({
+					label: { always: "Always", speaking: "While speaking", never: "Never" }[mode],
+					type: "radio",
+					checked: (getSetting("overlayDisplayNames") || "speaking") === mode,
+					click: () => voiceMonitor.setDisplayNames(mode), // setter persists
+				})),
+			},
+			{
+				label: "Overlay: only show speakers",
+				type: "checkbox",
+				checked: getSetting("overlayDisplayUsers") === "speaking",
+				click: (item) => voiceMonitor.setDisplayUsers(item.checked ? "speaking" : "always"),
+			},
+			{
 				// Windows-only effect (Chromium loopback); harmless elsewhere.
 				label: "Share system audio when screensharing",
 				type: "checkbox",

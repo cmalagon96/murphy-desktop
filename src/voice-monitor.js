@@ -3,11 +3,14 @@ const path = require("path");
 const { getSetting, setSetting } = require("./settings");
 
 const VOICE_STATE_URL = "https://murphy-cloud.com/apps/murphy_calls/voice-state";
+const KICK_URL = "https://murphy-cloud.com/apps/murphy_calls/kick";
 const NC_USER_URL = "https://murphy-cloud.com/ocs/v2.php/cloud/user?format=json";
 const AVATAR_URL = (localpart) => `https://murphy-cloud.com/avatar/${encodeURIComponent(localpart)}/64`;
+const MATRIX_SERVER = "matrix.murphy-cloud.com"; // localpart → full mxid for Message/Block
 
 const OVERLAY_H = 64; // avatar strip only
-const OVERLAY_EXPANDED_H = 112; // strip + volume popover row
+const NAME_ROW_H = 18; // extra height when name labels are enabled
+const POPOVER_H = 48; // extra height while the volume popover row is open
 
 // Polls the murphy_calls voice-state endpoint (NC-session cookies via
 // ses.fetch) and pops an always-on-top "X is in a voice call — Join" card
@@ -60,15 +63,27 @@ function startVoiceMonitor(ses, shell) {
 	let currentRoom = null;
 	let overlay = null;
 	let overlayEnabled = getSetting("overlayEnabled"); // tray toggle, persisted
+	let displayNames = getSetting("overlayDisplayNames") || "speaking"; // "always"|"speaking"|"never"
+	let displayUsers = getSetting("overlayDisplayUsers") || "always"; // "always"|"speaking"
 	let overlayExpanded = false; // volume popover open → taller/wider window
 	let stripWidth = 220; // width the avatar strip needs; popover may need more
 	let overlayWanted = false; // last recomputeOverlay verdict (guards async sends)
 	let lastRoom = null;
 	let lastInCall = false;
 	let lastPeople = []; // deduped participants from the last poll
+	let viewerCanKick = false; // server-reported (NC admin group), from voice-state
 	const avatarCache = new Map(); // localpart → Promise<dataURL|null>; cleared when call ends
-	const volumeMap = new Map(Object.entries(getSetting("participantVolumes") || {})); // localpart → 0..1
+	const volumeMap = new Map(Object.entries(getSetting("participantVolumes") || {})); // localpart → 0..2
+	const mutedMap = new Map(Object.entries(getSetting("mutedParticipants") || {})); // localpart → true
 	let volumeWarned = false;
+	// Fast speaking signal: the server field lags a full poll (2.5s); LiveKit's
+	// isSpeaking on the same participant objects the volume walk reaches is
+	// live (~Discord's own 200ms VAD delay at a 250ms poll).
+	const speakingMap = new Map(); // localpart → bool, overrides server field while present
+	let speakingTimer = null; // runs only while the overlay is shown
+	let speakingWarned = false;
+	let speakingSelfWarned = false; // self-anchor is best-effort (experimental)
+	let lastPayload = null; // last participants payload sent to the overlay
 
 	// In-call overlay: compact avatar strip floating over games (borderless/
 	// windowed). Draggable; KWin remembers where the user parks it.
@@ -138,25 +153,49 @@ function startVoiceMonitor(ses, shell) {
 		}
 	}
 
+	// LiveKit signal wins while we have one; the server field covers the gaps
+	// (fiber walk broken, participant not matched, harness runs without EC).
+	function effectiveSpeaking(localpart, serverSpeaking) {
+		return speakingMap.has(localpart) ? speakingMap.get(localpart) : !!serverSpeaking;
+	}
+
+	// Discord's "Display Users: Only While Speaking". Membership changes only
+	// happen here (the slow poll) — never from the 250ms speaking push — so
+	// the strip doesn't churn size at 4Hz. Falls back to everyone rather than
+	// rendering an empty floating pill.
+	function visiblePeople(people) {
+		if (displayUsers !== "speaking") return people;
+		const talking = people.filter((p) => p.localpart === uid || effectiveSpeaking(p.localpart, p.speaking));
+		return talking.length ? talking : people;
+	}
+
 	async function showOverlay(people) {
 		const o = getOverlay();
-		const shown = people.slice(0, 8);
-		stripWidth = 24 + shown.length * 44 + 16;
+		const shown = visiblePeople(people).slice(0, 8);
+		stripWidth = 24 + shown.length * (displayNames !== "never" ? 60 : 44) + 16;
 		o.setContentSize(overlaySize()[0], overlaySize()[1]);
 		const payload = await Promise.all(
 			shown.map(async (p) => ({
 				id: p.id,
 				localpart: p.localpart,
 				label: p.label,
-				speaking: p.speaking,
+				speaking: effectiveSpeaking(p.localpart, p.speaking),
+				serverSpeaking: !!p.speaking,
 				avatar: await fetchAvatar(p.localpart),
 				volume: volumeMap.has(p.localpart) ? volumeMap.get(p.localpart) : 1,
+				muted: mutedMap.get(p.localpart) === true,
+				blocked: ignoredSet.has(`@${p.localpart}:${MATRIX_SERVER}`),
 				self: p.localpart === uid,
 			}))
 		);
 		if (!overlayWanted || !overlay || overlay.isDestroyed()) return; // focus regained mid-fetch
+		lastPayload = payload;
+		const viewerIsAdmin =
+			viewerCanKick ||
+			process.env.MURPHY_FAKE_ADMIN === "1" || // harness: show the Kick row
+			(!!uid && (getSetting("callAdmins") || []).includes(uid));
 		const send = () => {
-			o.webContents.send("calloverlay:state", { participants: payload });
+			o.webContents.send("calloverlay:state", { participants: payload, displayNames, viewerIsAdmin });
 			if (!o.isVisible()) o.showInactive();
 		};
 		o.webContents.isLoading() ? o.webContents.once("did-finish-load", send) : send();
@@ -172,6 +211,7 @@ function startVoiceMonitor(ses, shell) {
 		overlayWanted = !!(lastRoom && lastInCall && overlayEnabled && !isShellFocused());
 		if (overlayWanted) showOverlay(lastPeople);
 		else hideOverlay();
+		syncSpeakingTimer();
 	}
 
 	// --- per-participant volume (Feature B) -------------------------------
@@ -222,8 +262,9 @@ function startVoiceMonitor(ses, shell) {
 		let pending = 0;
 		let matched = 0;
 		for (const p of people) {
-			if (p.localpart === uid || !volumeMap.has(p.localpart)) continue;
-			const v = volumeMap.get(p.localpart);
+			if (p.localpart === uid) continue;
+			// mute-for-me wins over the saved volume but never overwrites it
+			const v = mutedMap.get(p.localpart) === true ? 0 : volumeMap.has(p.localpart) ? volumeMap.get(p.localpart) : 1;
 			if (v === 1) continue;
 			pending++;
 			matched += Math.max(0, await setParticipantVolume(p.localpart, v));
@@ -236,23 +277,225 @@ function startVoiceMonitor(ses, shell) {
 		}
 	}
 
+	// --- live speaking ring ----------------------------------------------
+	// Same fiber walk as setParticipantVolume, but read-only: collect every
+	// remote participant's isSpeaking (audioLevel as a fallback for older
+	// livekit-client builds). Identity → localpart parse must stay in main so
+	// it can't drift from dedupe()'s.
+	async function pollSpeakingOnce() {
+		if (!overlayWanted) return;
+		if (process.env.MURPHY_FAKE_SPEAKING === "1") {
+			// harness: flip the non-speaking fake participant every second to
+			// exercise the fast path without a live EC frame
+			speakingMap.set("rosie", Math.floor(Date.now() / 1000) % 2 === 0);
+			pushSpeakingUpdate();
+			return;
+		}
+		const frame = ecFrame();
+		if (!frame) return;
+		const js = `(() => { try {
+			const out = [];
+			const speakingOf = (p) => p.isSpeaking === true || (typeof p.audioLevel === "number" && p.audioLevel > 0.02);
+			for (const el of document.querySelectorAll('audio[data-lk-source]:not([data-lk-local-participant="true"])')) {
+				const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+				let f = key && el[key];
+				for (let i = 0; f && i < 8; i++, f = f.return) {
+					const p = f.memoizedProps && f.memoizedProps.trackRef && f.memoizedProps.trackRef.participant;
+					if (p && typeof p.identity === "string") {
+						out.push([p.identity.toLowerCase(), speakingOf(p)]);
+						break;
+					}
+				}
+			}
+			// self: your own mic has no playback <audio> element — anchor on any
+			// local-flagged element (tile/video) and accept participant-shaped
+			// props; identity parses to our own localpart so it merges like the rest
+			let selfDone = false;
+			for (const el of document.querySelectorAll('[data-lk-local-participant="true"]')) {
+				if (selfDone) break;
+				const key = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+				let f = key && el[key];
+				for (let i = 0; f && i < 12; i++, f = f.return) {
+					const props = f.memoizedProps || {};
+					const p = (props.trackRef && props.trackRef.participant) || props.participant;
+					if (p && p.isLocal === true && typeof p.identity === "string") {
+						out.push([p.identity.toLowerCase(), speakingOf(p)]);
+						selfDone = true;
+						break;
+					}
+				}
+			}
+			return out;
+		} catch { return null; } })()`;
+		let pairs = null;
+		try {
+			pairs = await frame.executeJavaScript(js, true);
+		} catch {}
+		if (!Array.isArray(pairs)) return;
+		const hasRemotes = lastPeople.some((p) => p.localpart !== uid);
+		if (pairs.length === 0) {
+			if (hasRemotes && !speakingWarned) {
+				speakingWarned = true; // one-time tripwire, mirrors volumeWarned
+				console.error(
+					"[voice-monitor] speaking poll matched no EC audio elements — falling back to the slow server field"
+				);
+			}
+			return; // speakingMap stays as-is/empty → server field drives the ring
+		}
+		speakingMap.clear();
+		for (const [identity, speaking] of pairs) {
+			const m = /^@([^:]+):/.exec(identity || "");
+			if (!m) continue;
+			const lp = m[1].toLowerCase();
+			speakingMap.set(lp, speakingMap.get(lp) || speaking); // multi-device OR
+		}
+		if (!speakingSelfWarned && uid && speakingMap.size > 0 && !speakingMap.has(uid)) {
+			speakingSelfWarned = true; // one-time: self ring degrades to the server field
+			console.warn("[voice-monitor] self speaking anchor not found — own ring uses the slow server field");
+		}
+		pushSpeakingUpdate();
+	}
+
+	// Re-send only the speaking flags, and only on a transition: no avatar
+	// refetch, no resize, no add/remove — those stay on the slow poll so the
+	// strip never churns at 4Hz.
+	function pushSpeakingUpdate() {
+		if (!overlayWanted || !overlay || overlay.isDestroyed() || !lastPayload) return;
+		let changed = false;
+		for (const row of lastPayload) {
+			const eff = effectiveSpeaking(row.localpart, row.serverSpeaking);
+			if (row.speaking !== eff) {
+				row.speaking = eff;
+				changed = true;
+			}
+		}
+		if (changed) overlay.webContents.send("calloverlay:state", { participants: lastPayload, displayNames });
+	}
+
+	function syncSpeakingTimer() {
+		const want = overlayWanted && (!!ecFrame() || process.env.MURPHY_FAKE_SPEAKING === "1");
+		if (want && !speakingTimer) speakingTimer = setInterval(pollSpeakingOnce, 250);
+		if (!want && speakingTimer) {
+			clearInterval(speakingTimer);
+			speakingTimer = null;
+			speakingMap.clear();
+		}
+	}
+
 	ipcMain.on("calloverlay:set-volume", (_e, { localpart, volume } = {}) => {
 		if (typeof localpart !== "string" || typeof volume !== "number" || Number.isNaN(volume)) return;
-		const v = Math.min(1, Math.max(0, volume));
+		const v = Math.min(2, Math.max(0, volume)); // Discord-style 0–200%
 		volumeMap.set(localpart, v);
 		setSetting("participantVolumes", Object.fromEntries(volumeMap));
+		if (mutedMap.delete(localpart)) setSetting("mutedParticipants", Object.fromEntries(mutedMap)); // dragging volume implies unmute
 		setParticipantVolume(localpart, v);
+	});
+
+	ipcMain.on("calloverlay:set-muted", (_e, { localpart, muted } = {}) => {
+		if (typeof localpart !== "string") return;
+		if (muted) mutedMap.set(localpart, true);
+		else mutedMap.delete(localpart);
+		setSetting("mutedParticipants", Object.fromEntries(mutedMap));
+		setParticipantVolume(localpart, muted ? 0 : volumeMap.has(localpart) ? volumeMap.get(localpart) : 1);
+	});
+
+	ipcMain.on("calloverlay:message", (_e, { localpart } = {}) => {
+		if (typeof localpart !== "string" || !/^[a-z0-9._=\-]+$/i.test(localpart)) return;
+		shell.openDMWith?.(`@${localpart.toLowerCase()}:${MATRIX_SERVER}`);
+	});
+
+	// --- Block / Unblock (Matrix ignore list) -----------------------------
+	// Element's own client does the work: the pinned build exposes
+	// window.mxMatrixClientPeg (probed via scripts/element-probe.js), and
+	// setIgnoredUsers is public matrix-js-sdk API. The chat pane always exists
+	// while in a call — the call itself runs inside it.
+	let ignoredSet = new Set(); // lowercased mxids, refreshed each in-call poll
+
+	function chatPane() {
+		const wc = shell.panes?.get?.("chat")?.webContents;
+		return wc && !wc.isDestroyed() ? wc : null;
+	}
+
+	async function refreshIgnored() {
+		const wc = chatPane();
+		if (!wc) return;
+		try {
+			const list = await wc.executeJavaScript(
+				`(() => { try {
+					const c = window.mxMatrixClientPeg && window.mxMatrixClientPeg.get();
+					return c ? c.getIgnoredUsers() : null;
+				} catch { return null; } })()`,
+				true
+			);
+			if (Array.isArray(list)) ignoredSet = new Set(list.map((u) => String(u).toLowerCase()));
+		} catch {}
+	}
+
+	ipcMain.on("calloverlay:block", async (_e, { localpart, block } = {}) => {
+		if (typeof localpart !== "string" || !/^[a-z0-9._=\-]+$/i.test(localpart)) return;
+		const mxid = `@${localpart.toLowerCase()}:${MATRIX_SERVER}`;
+		const wc = chatPane();
+		if (!wc) return;
+		const js = `(async () => { try {
+			const c = window.mxMatrixClientPeg && window.mxMatrixClientPeg.get();
+			if (!c) return "no-client";
+			const list = c.getIgnoredUsers() || [];
+			const has = list.includes(${JSON.stringify(mxid)});
+			if (${!!block} && !has) await c.setIgnoredUsers([...list, ${JSON.stringify(mxid)}]);
+			if (${!block} && has) await c.setIgnoredUsers(list.filter((u) => u !== ${JSON.stringify(mxid)}));
+			return "ok";
+		} catch (e) { return "err:" + (e && e.message); } })()`;
+		try {
+			const r = await wc.executeJavaScript(js, true);
+			if (r !== "ok") console.error("[voice-monitor] block failed: " + r);
+			else if (block) ignoredSet.add(mxid);
+			else ignoredSet.delete(mxid);
+		} catch {}
+	});
+
+	// Kick = LiveKit RemoveParticipant via the murphy_calls admin endpoint
+	// (NC session cookie auth; server enforces the NC admin group). Removes
+	// them from the call only — Matrix room membership is untouched.
+	ipcMain.on("calloverlay:kick", async (_e, { localpart } = {}) => {
+		if (typeof localpart !== "string" || !/^[a-z0-9._=\-]+$/i.test(localpart) || !lastRoom) return;
+		try {
+			const r = await ses.fetch(KICK_URL, {
+				method: "POST",
+				credentials: "include",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ room: lastRoom.id, localpart: localpart.toLowerCase() }),
+			});
+			if (!r.ok) console.error("[voice-monitor] kick failed: HTTP " + r.status);
+		} catch (e) {
+			console.error("[voice-monitor] kick failed: " + (e && e.message));
+		}
 	});
 	// Grow only while a popover is open — permanent transparent area would
 	// eat mouse clicks meant for the game underneath. The popover pill is
 	// wider than a short strip, so expanded mode also widens.
+	function stripH() {
+		return displayNames !== "never" ? OVERLAY_H + NAME_ROW_H : OVERLAY_H;
+	}
 	function overlaySize() {
-		return overlayExpanded
-			? [Math.max(stripWidth, 240), OVERLAY_EXPANDED_H]
-			: [stripWidth, OVERLAY_H];
+		let [w, h] = overlayExpanded
+			? [Math.max(stripWidth, 240), stripH() + POPOVER_H]
+			: [stripWidth, stripH()];
+		if (menuSize) {
+			w = Math.max(w, menuSize[0] + 16);
+			h = stripH() + menuSize[1] + 12;
+		}
+		return [w, h];
 	}
 	ipcMain.on("calloverlay:resize", (_e, { expanded } = {}) => {
 		overlayExpanded = !!expanded;
+		if (overlay && !overlay.isDestroyed()) overlay.setContentSize(overlaySize()[0], overlaySize()[1]);
+	});
+	// Context menu open/close — renderer measures its menu, window grows to fit.
+	// Same "grow only while open" rationale as the popover: a permanently big
+	// transparent window would eat clicks meant for the game.
+	let menuSize = null; // [w, h] while open
+	ipcMain.on("calloverlay:menu-resize", (_e, { open, width, height } = {}) => {
+		menuSize = open ? [Math.min(400, Number(width) || 0), Math.min(500, Number(height) || 0)] : null;
 		if (overlay && !overlay.isDestroyed()) overlay.setContentSize(overlaySize()[0], overlaySize()[1]);
 	});
 
@@ -284,6 +527,7 @@ function startVoiceMonitor(ses, shell) {
 			try {
 				const r = await ses.fetch(VOICE_STATE_URL, { credentials: "include" });
 				if (r.ok) state = await r.json();
+				viewerCanKick = state.viewerCanKick === true;
 			} catch {}
 
 			if (process.env.MURPHY_FAKE_CALL) {
@@ -308,7 +552,10 @@ function startVoiceMonitor(ses, shell) {
 			lastInCall = inCall;
 			lastPeople = room ? dedupe(room.participants) : [];
 			recomputeOverlay();
-			if (room && inCall) applyAllVolumes(lastPeople);
+			if (room && inCall) {
+				applyAllVolumes(lastPeople);
+				refreshIgnored();
+			}
 
 			if (room && !inCall && !viewingChat && !dismissed.has(room.id)) {
 				currentRoom = room;
@@ -330,6 +577,8 @@ function startVoiceMonitor(ses, shell) {
 				notified.clear();
 				dismissed.clear();
 				avatarCache.clear(); // transient fetch failures get one retry per call
+				speakingMap.clear();
+				lastPayload = null;
 			}
 			setTimeout(poll, room ? 2500 : 4000);
 		} catch {
@@ -352,6 +601,16 @@ function startVoiceMonitor(ses, shell) {
 	return {
 		setOverlayEnabled(v) {
 			overlayEnabled = v;
+			recomputeOverlay();
+		},
+		setDisplayNames(mode) {
+			displayNames = mode;
+			setSetting("overlayDisplayNames", mode);
+			recomputeOverlay();
+		},
+		setDisplayUsers(mode) {
+			displayUsers = mode;
+			setSetting("overlayDisplayUsers", mode);
 			recomputeOverlay();
 		},
 	};

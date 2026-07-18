@@ -6,7 +6,7 @@
 			* { margin: 0; box-sizing: border-box; user-select: none; }
 			html, body { background: transparent; overflow: hidden; }
 			#strip {
-				display: flex; align-items: center; gap: 6px;
+				display: flex; align-items: flex-start; gap: 6px;
 				width: max-content; margin: 4px;
 				padding: 7px 12px;
 				background: rgba(16, 16, 20, 0.78);
@@ -14,6 +14,23 @@
 				border-radius: 999px;
 				-webkit-app-region: drag; /* grab anywhere to reposition over the game */
 			}
+			.cell {
+				display: flex; flex-direction: column; align-items: center;
+				width: 38px;
+				position: relative; /* anchors the muted badge */
+			}
+			/* red slashed-mic badge for users you've muted-for-me (Discord-style) */
+			.muted-badge {
+				position: absolute; right: -2px; top: 26px;
+				width: 16px; height: 16px; border-radius: 50%;
+				background: #1e1f22; color: #f23f43;
+				display: none; align-items: center; justify-content: center;
+			}
+			#strip.names .muted-badge { right: 6px; }
+			.cell.muted .muted-badge { display: flex; }
+			.cell.muted .bubble { opacity: 0.55; }
+			#strip.names { border-radius: 22px; }
+			#strip.names .cell { width: 54px; }
 			.bubble {
 				width: 38px; height: 38px; border-radius: 50%;
 				display: flex; align-items: center; justify-content: center;
@@ -32,6 +49,17 @@
 				50% { box-shadow: 0 0 0 5px rgba(35, 165, 90, 0.4); }
 				100% { box-shadow: 0 0 0 2.5px #23a55a; }
 			}
+			/* name labels — space reserved whenever the mode isn't "never" so the
+			   strip never resizes when someone starts talking */
+			.name { display: none; }
+			#strip.names .name {
+				display: block; visibility: hidden;
+				margin-top: 3px; height: 12px; max-width: 100%;
+				font: 600 10px system-ui, sans-serif; color: #fff;
+				text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+				overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+			}
+			#strip.names .name.show { visibility: visible; }
 			/* per-person volume popover — appears in the expanded row below the strip */
 			#vol {
 				display: flex; align-items: center; gap: 8px;
@@ -46,15 +74,41 @@
 			#vol[hidden] { display: none; }
 			#volslider { width: 110px; accent-color: #23a55a; -webkit-app-region: no-drag; }
 			#volpct { min-width: 34px; text-align: right; opacity: 0.8; }
+			/* Discord-style right-click user menu */
+			#menu {
+				position: absolute; z-index: 10;
+				min-width: 190px; padding: 6px;
+				background: #111214;
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				border-radius: 8px;
+				box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+				font: 500 12px system-ui, sans-serif; color: #dbdee1;
+				-webkit-app-region: no-drag;
+			}
+			#menu[hidden] { display: none; }
+			.mi {
+				display: flex; align-items: center; justify-content: space-between; gap: 8px;
+				padding: 7px 8px; border-radius: 4px; cursor: default; white-space: nowrap;
+			}
+			.mi:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+			.mi.danger { color: #f23f43; }
+			.mi.danger:hover { background: #f23f43; color: #fff; }
+			.mi .check { font-size: 11px; }
+			.msep { height: 1px; margin: 4px 6px; background: rgba(255, 255, 255, 0.08); }
+			.mvol { padding: 5px 8px; }
+			.mvol .mvol-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+			.mvol .mvol-head span:last-child { opacity: 0.8; }
+			#menu input[type="range"] { width: 100%; accent-color: #23a55a; -webkit-app-region: no-drag; }
 		</style>
 	</head>
 	<body>
 		<div id="strip"></div>
 		<div id="vol" hidden>
 			<span id="volname"></span>
-			<input id="volslider" type="range" min="0" max="1" step="0.05" />
+			<input id="volslider" type="range" min="0" max="2" step="0.05" />
 			<span id="volpct"></span>
 		</div>
+		<div id="menu" hidden></div>
 		<script>
 			const strip = document.getElementById("strip");
 			const vol = document.getElementById("vol");
@@ -62,6 +116,8 @@
 			const volslider = document.getElementById("volslider");
 			const volpct = document.getElementById("volpct");
 			let volTarget = null; // localpart the popover controls
+			let viewerIsAdmin = false; // from state; gates the Kick menu row
+			const cells = new Map(); // localpart → { cell, bubble, name, avatar, p }
 
 			function colorFor(label) {
 				let h = 0;
@@ -72,6 +128,7 @@
 				return Math.round(v * 100) + "%";
 			}
 			function openVol(p) {
+				if (!menu.hidden) return; // menu owns the expanded row while open
 				if (volTarget !== p.localpart) {
 					volTarget = p.localpart;
 					volslider.value = p.volume ?? 1;
@@ -91,27 +148,207 @@
 				volpct.textContent = pct(parseFloat(volslider.value));
 				window.murphyOverlay.setVolume(volTarget, parseFloat(volslider.value));
 			});
-			document.body.addEventListener("mouseleave", closeVol);
 
-			window.murphyOverlay.onState((s) => {
-				strip.innerHTML = "";
-				let targetSeen = false;
-				for (const p of s.participants.slice(0, 8)) {
-					const b = document.createElement("div");
-					b.className = "bubble" + (p.speaking ? " speaking" : "");
-					if (p.avatar) {
-						b.style.backgroundImage = `url(${p.avatar})`;
-					} else {
-						b.style.background = colorFor(p.label || "?");
-						b.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
-					}
-					b.title = p.label;
-					// hover your own bubble does nothing — you can't set your own volume
-					if (!p.self) b.addEventListener("mouseenter", () => openVol(p));
-					if (p.localpart === volTarget) targetSeen = true;
-					strip.appendChild(b);
+			// --- right-click user menu (Discord-style) ---
+			const menu = document.getElementById("menu");
+			let menuTarget = null; // localpart the menu controls
+			let menuAnchor = null; // cell element it's positioned under
+
+			function menuRow(label, opts = {}) {
+				const row = document.createElement("div");
+				row.className = "mi" + (opts.danger ? " danger" : "");
+				const text = document.createElement("span");
+				text.textContent = label;
+				row.appendChild(text);
+				if (opts.check) {
+					const c = document.createElement("span");
+					c.className = "check";
+					c.textContent = "✓";
+					row.appendChild(c);
 				}
-				if (volTarget && !targetSeen) closeVol(); // they left the call mid-hover
+				if (opts.onClick) row.addEventListener("click", opts.onClick);
+				menu.appendChild(row);
+				return row;
+			}
+			function menuSep() {
+				const s = document.createElement("div");
+				s.className = "msep";
+				menu.appendChild(s);
+			}
+
+			function buildMenu(p) {
+				menu.innerHTML = "";
+				menuRow("Message", {
+					onClick: () => {
+						window.murphyOverlay.message(p.localpart);
+						closeMenu();
+					},
+				});
+				menuSep();
+				menuRow(p.muted ? "Unmute" : "Mute", {
+					check: p.muted,
+					onClick: () => {
+						window.murphyOverlay.setMuted(p.localpart, !p.muted);
+						p.muted = !p.muted; // optimistic; the slow poll confirms
+						closeMenu();
+					},
+				});
+				const volRow = document.createElement("div");
+				volRow.className = "mvol";
+				const head = document.createElement("div");
+				head.className = "mvol-head";
+				const headLabel = document.createElement("span");
+				headLabel.textContent = "User Volume";
+				const headPct = document.createElement("span");
+				const slider = document.createElement("input");
+				slider.type = "range";
+				slider.min = "0";
+				slider.max = "2";
+				slider.step = "0.05";
+				slider.value = p.muted ? 0 : (p.volume ?? 1);
+				headPct.textContent = pct(parseFloat(slider.value));
+				slider.addEventListener("input", () => {
+					headPct.textContent = pct(parseFloat(slider.value));
+					window.murphyOverlay.setVolume(p.localpart, parseFloat(slider.value));
+					p.volume = parseFloat(slider.value);
+					p.muted = false; // main clears mute when the slider moves
+				});
+				head.append(headLabel, headPct);
+				volRow.append(head, slider);
+				menu.appendChild(volRow);
+				menuSep();
+				menuRow(p.blocked ? "Unblock" : "Block", {
+					danger: !p.blocked,
+					onClick: () => {
+						window.murphyOverlay.block(p.localpart, !p.blocked);
+						p.blocked = !p.blocked; // optimistic; the slow poll confirms
+						closeMenu();
+					},
+				});
+				if (viewerIsAdmin) {
+					menuSep();
+					menuRow("Kick from Call", {
+						danger: true,
+						onClick: () => {
+							window.murphyOverlay.kick(p.localpart);
+							closeMenu();
+						},
+					});
+				}
+			}
+
+			function positionMenu() {
+				if (!menuAnchor || !menuAnchor.isConnected) return;
+				const stripRect = strip.getBoundingClientRect();
+				const cellRect = menuAnchor.getBoundingClientRect();
+				menu.style.top = stripRect.bottom + 4 + "px";
+				const maxLeft = Math.max(4, window.innerWidth - menu.offsetWidth - 8);
+				menu.style.left = Math.min(cellRect.left, maxLeft) + "px";
+			}
+
+			function openMenu(p, cellEl) {
+				closeVol();
+				menuTarget = p.localpart;
+				menuAnchor = cellEl;
+				buildMenu(p);
+				menu.hidden = false;
+				window.murphyOverlay.setMenuOpen(true, menu.offsetWidth, menu.offsetHeight);
+				positionMenu();
+			}
+			function closeMenu() {
+				if (menu.hidden) return;
+				menuTarget = null;
+				menuAnchor = null;
+				menu.hidden = true;
+				window.murphyOverlay.setMenuOpen(false);
+			}
+
+			document.addEventListener("mousedown", (e) => {
+				if (!menu.hidden && !menu.contains(e.target)) closeMenu();
+			});
+			document.addEventListener("keydown", (e) => {
+				if (e.key === "Escape") closeMenu();
+			});
+			// leaving the window closes both floats — clicks outside a transparent
+			// always-on-top window are invisible to us, so this is the reliable exit
+			document.body.addEventListener("mouseleave", () => {
+				closeVol();
+				closeMenu();
+			});
+			window.addEventListener("blur", closeMenu);
+			window.addEventListener("resize", () => {
+				if (!menu.hidden) positionMenu();
+			});
+
+			// Keyed in-place updates: the 250ms speaking push re-sends the same
+			// people, and recreating nodes would restart the pulse animation and
+			// yank hover state mid-interaction.
+			window.murphyOverlay.onState((s) => {
+				const mode = s.displayNames || "speaking";
+				viewerIsAdmin = s.viewerIsAdmin === true;
+				strip.classList.toggle("names", mode !== "never");
+				const list = s.participants.slice(0, 8);
+				const seen = new Set();
+				list.forEach((p, i) => {
+					seen.add(p.localpart);
+					let c = cells.get(p.localpart);
+					if (!c) {
+						const cell = document.createElement("div");
+						cell.className = "cell";
+						const bubble = document.createElement("div");
+						bubble.className = "bubble";
+						const name = document.createElement("div");
+						name.className = "name";
+						const badge = document.createElement("div");
+						badge.className = "muted-badge";
+						badge.innerHTML =
+							'<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">' +
+							'<path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>' +
+							'<path d="M19 11a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11h-2z"/>' +
+							'<path d="M2.7 2.7 21.3 21.3" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>' +
+							"</svg>";
+						cell.append(bubble, badge, name);
+						c = { cell, bubble, name, avatar: undefined, p };
+						cells.set(p.localpart, c);
+						// hover your own bubble does nothing — you can't set your own volume
+						if (!p.self) {
+							bubble.addEventListener("mouseenter", () => openVol(c.p));
+							bubble.addEventListener("contextmenu", (e) => {
+								e.preventDefault();
+								openMenu(c.p, c.cell);
+							});
+						}
+					}
+					c.p = p;
+					c.bubble.classList.toggle("speaking", !!p.speaking);
+					c.cell.classList.toggle("muted", !!p.muted);
+					if (p.avatar) {
+						if (c.avatar !== p.avatar) {
+							c.avatar = p.avatar;
+							c.bubble.style.background = "";
+							c.bubble.style.backgroundImage = `url(${p.avatar})`;
+							c.bubble.textContent = "";
+						}
+					} else if (c.avatar !== null) {
+						c.avatar = null;
+						c.bubble.style.backgroundImage = "";
+						c.bubble.style.background = colorFor(p.label || "?");
+						c.bubble.textContent = (p.label || "?").trim().charAt(0).toUpperCase() || "?";
+					}
+					c.bubble.title = p.label;
+					c.name.textContent = p.label || "";
+					c.name.classList.toggle("show", mode === "always" || (mode === "speaking" && !!p.speaking));
+					const at = strip.children[i];
+					if (at !== c.cell) strip.insertBefore(c.cell, at || null);
+				});
+				for (const [lp, c] of [...cells]) {
+					if (!seen.has(lp)) {
+						c.cell.remove();
+						cells.delete(lp);
+					}
+				}
+				if (volTarget && !seen.has(volTarget)) closeVol(); // they left the call mid-hover
+				if (menuTarget && !seen.has(menuTarget)) closeMenu(); // they left the call mid-menu
 			});
 		</script>
 	</body>
